@@ -188,10 +188,10 @@ img {
 }
 .remote-nav-ring {
   position: fixed !important;
-  border: 4px solid var(--bew-theme-color, #00a1d6) !important;
-  border-radius: calc(var(--bew-radius, 12px) + 6px) !important;
-  background: rgba(0, 161, 214, 0.1) !important;
-  box-shadow: 0 0 32px rgba(0, 161, 214, 0.45) !important;
+  border: 2px solid var(--bew-theme-color, #00a1d6) !important;
+  border-radius: calc(var(--bew-radius, 12px) + 4px) !important;
+  background: rgba(0, 161, 214, 0.08) !important;
+  box-shadow: 0 0 18px rgba(0, 161, 214, 0.35) !important;
   pointer-events: none !important;
   z-index: 2147483000 !important;
   box-sizing: border-box !important;
