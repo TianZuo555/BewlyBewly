@@ -367,6 +367,10 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     e.preventDefault()
     e.stopPropagation()
 
+    // Menu moves attention away from the grid — drop the selection ring.
+    navActive = false
+    setFocus(null)
+
     if (e.repeat)
       return
     // Second press while the previous single-click is still pending.
