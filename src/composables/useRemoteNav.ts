@@ -2,6 +2,7 @@ import { useEventListener } from '@vueuse/core'
 import type { Ref } from 'vue'
 
 import { settings } from '~/logic'
+import { isHomePage } from '~/utils/main'
 
 /**
  * Spatial (arrow-key) navigation for remote controls.
@@ -295,6 +296,24 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
       window.location.reload()
   }
 
+  // Remote Back must never leave bilibili — when the history stack has no
+  // bilibili entry left, bottom out at the homepage instead.
+  function navBack() {
+    try {
+      const nav = (window as any).navigation
+      const entries = nav?.entries?.() as { url: string }[] | undefined
+      const idx = nav?.currentEntry?.index ?? -1
+      const prevUrl = idx > 0 ? entries?.[idx - 1]?.url : null
+      if (prevUrl && /(?:^|\.)bilibili\.com$/i.test(new URL(prevUrl).hostname)) {
+        history.back()
+        return
+      }
+    }
+    catch {}
+    if (!isHomePage())
+      window.location.href = 'https://www.bilibili.com/'
+  }
+
   function focusPlayer() {
     const player = document.querySelector<HTMLElement>('.bpx-player-container')
       ?? document.querySelector<HTMLElement>('#bilibili-player')
@@ -452,7 +471,7 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
           return
         }
       }
-      history.back()
+      navBack()
       return
     }
 
@@ -471,7 +490,7 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
           focusPlayer()
       }
       else {
-        history.back()
+        navBack()
       }
       return
     }
