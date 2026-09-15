@@ -98,84 +98,46 @@ async function handleDelete(value: string) {
   searchHistory.value = await removeSearchHistory(value)
 }
 
+// -1 means no item highlighted; Enter then falls back to the typed keyword.
+// Up/Down only move the highlight — the keyword stays untouched so the
+// history list (shown only while the keyword is empty) doesn't collapse.
+function moveActiveItem(delta: number) {
+  if (!isFocus.value)
+    return
+  const items = keyword.value ? suggestionItemRef.value : historyItemRef.value
+  if (!items.length)
+    return
+  // Wrap through -1 (no highlight = Enter uses the typed keyword)
+  let next = selectedIndex.value + delta
+  if (next >= items.length)
+    next = -1
+  else if (next < -1)
+    next = items.length - 1
+  selectedIndex.value = next
+  items.forEach((item, index) => item.classList.toggle('active', index === selectedIndex.value))
+  if (selectedIndex.value >= 0)
+    items[selectedIndex.value]?.scrollIntoView({ block: 'nearest' })
+}
+
 function handleKeyUp(e: KeyboardEvent) {
   // Skip the key event triggered by IME
   if (e.isComposing)
     return
-
-  if (selectedIndex.value <= 0) {
-    selectedIndex.value = 0
-    return
-  }
-
-  selectedIndex.value--
-
-  if (isFocus.value && suggestions.length !== 0)
-    keyword.value = suggestions[selectedIndex.value].value
-  else if (isFocus.value && searchHistory.value.length !== 0)
-    keyword.value = searchHistory.value[selectedIndex.value].value
-
-  suggestionItemRef.value.forEach((item, index) => {
-    if (index === selectedIndex.value)
-      item.classList.add('active')
-    else item.classList.remove('active')
-  })
-
-  historyItemRef.value.forEach((item, index) => {
-    if (index === selectedIndex.value)
-      item.classList.add('active')
-    else item.classList.remove('active')
-  })
+  moveActiveItem(-1)
 }
 
 function handleKeyDown(e: KeyboardEvent) {
   // Skip the key event triggered by IME
   if (e.isComposing)
     return
-
-  let isShowSuggestion = false
-  if (isFocus.value && suggestions.length !== 0)
-    isShowSuggestion = true
-  else if (isFocus.value && !keyword.value && searchHistory.value.length !== 0)
-    isShowSuggestion = false
-
-  if (
-    isShowSuggestion
-    && selectedIndex.value >= suggestions.length - 1
-  ) {
-    selectedIndex.value = suggestions.length - 1
-    return
-  }
-  if (
-    !isShowSuggestion
-    && selectedIndex.value >= searchHistory.value.length - 1
-  ) {
-    selectedIndex.value = searchHistory.value.length - 1
-    return
-  }
-
-  selectedIndex.value++
-  keyword.value = isShowSuggestion
-    ? suggestions[selectedIndex.value].value
-    : searchHistory.value[selectedIndex.value].value
-
-  suggestionItemRef.value.forEach((item, index) => {
-    if (index === selectedIndex.value)
-      item.classList.add('active')
-    else item.classList.remove('active')
-  })
-
-  historyItemRef.value.forEach((item, index) => {
-    if (index === selectedIndex.value)
-      item.classList.add('active')
-    else item.classList.remove('active')
-  })
+  moveActiveItem(1)
 }
 
 function handleKeyEnter(e: KeyboardEvent) {
   if (!e.shiftKey && e.key === 'Enter' && !e.isComposing) {
     e.preventDefault()
-    navigateToSearchResultPage(keyword.value)
+    const items = keyword.value ? suggestions : searchHistory.value
+    navigateToSearchResultPage(items[selectedIndex.value]?.value ?? keyword.value)
   }
 }
 
@@ -284,7 +246,7 @@ async function handleClearSearchHistory() {
             </button>
           </div>
 
-          <div class="history-item-container p2 flex flex-wrap gap-x-3 gap-y-3">
+          <div class="history-item-container p2 flex flex-col">
             <div
               v-for="item in searchHistory" :key="item.timestamp" ref="historyItemRef"
               class="history-item group"
@@ -428,8 +390,12 @@ async function handleClearSearchHistory() {
 
       .history-item-container {
         .history-item {
-          --uno: "relative cursor-pointer duration-300";
-          --uno: "py-2 px-6 bg-$bew-fill-1 hover:bg-$bew-theme-color-20 hover:text-$bew-theme-color rounded-$bew-radius-half";
+          @include search-content-item;
+          --uno: "relative";
+
+          &.active {
+            --uno: "bg-$bew-fill-2 shadow-[var(--bew-shadow-1),var(--bew-shadow-edge-glow-1)]";
+          }
         }
       }
     }

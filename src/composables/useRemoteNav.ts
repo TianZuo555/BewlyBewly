@@ -23,6 +23,23 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
   let focusedCard: HTMLElement | null = null
   let navActive = false
 
+  // Bilibili's player binds arrow keys (seek/volume) on a window listener that
+  // was registered before this content script, so we can't stopPropagation it.
+  // But it ignores events targeted at form controls — so while element nav is
+  // active on a video page, this invisible readonly input holds real DOM focus
+  // and swallows the player's key handling.
+  let navSink: HTMLInputElement | null = null
+
+  function ensureNavSink(): HTMLInputElement {
+    if (navSink?.isConnected)
+      return navSink
+    navSink = document.createElement('input')
+    navSink.readOnly = true
+    navSink.setAttribute('style', 'position:fixed;top:0;left:0;width:0;height:0;opacity:0;pointer-events:none')
+    document.body.appendChild(navSink)
+    return navSink
+  }
+
   // The selection ring is a fixed-position overlay appended to the shadow
   // root — card-internal ::after approaches get clipped/overpainted by the
   // card's own stacking contexts, so this is the reliable way.
@@ -62,17 +79,37 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     ringRaf = 0
     ringEl?.remove()
     ringEl = null
+    navSink?.blur()
   }
+
+  function isVideoPage(): boolean {
+    return !!document.querySelector('.bpx-player-container')
+  }
+
+  // Extra focusable targets on video pages, in addition to the rec cards.
+  // The player itself is included so Up can move focus back onto it.
+  const VIDEO_PAGE_TARGETS = [
+    '.bpx-player-container',
+    '.bpx-player-dm-input',
+    '.bpx-player-dm-btn-send',
+    '.toolbar-left-item-wrap',
+    '.up-info-container',
+    'bili-comments',
+  ]
 
   function getCards(): HTMLElement[] {
     const cards: HTMLElement[] = []
     const bewly = document.querySelector('#bewly')
     if (bewly?.shadowRoot)
       cards.push(...Array.from(bewly.shadowRoot.querySelectorAll<HTMLElement>('.video-card')))
-    cards.push(...Array.from(document.querySelectorAll<HTMLElement>('.bili-video-card')))
+    cards.push(...Array.from(document.querySelectorAll<HTMLElement>('.bili-video-card, .video-page-card-small')))
+    if (isVideoPage()) {
+      for (const sel of VIDEO_PAGE_TARGETS)
+        cards.push(...Array.from(document.querySelectorAll<HTMLElement>(sel)))
+    }
     return cards.filter((el) => {
       const r = el.getBoundingClientRect()
-      return r.width > 0 && r.height > 0 && el.querySelector('a[href]')
+      return r.width > 0 && r.height > 0
     })
   }
 
@@ -108,6 +145,8 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     card.classList.add(FOCUS_CLASS)
     card.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: smooth ? 'smooth' : 'auto' })
     showRing()
+    if (isVideoPage())
+      ensureNavSink().focus({ preventScroll: true })
   }
 
   function pickInitial(cards: HTMLElement[]): HTMLElement {
@@ -138,22 +177,13 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     }
   }
 
-  function moveFocus(dir: 'up' | 'down' | 'left' | 'right', repeat: boolean) {
-    const cards = getCards()
-    if (!cards.length)
-      return
-    if (!focusedCard || !focusedCard.isConnected || !cards.includes(focusedCard)) {
-      setFocus(restoreLast(cards) ?? pickInitial(cards), { smooth: false })
-      return
-    }
-
-    const fr = focusedCard.getBoundingClientRect()
-    const fx = fr.left + fr.width / 2
-    const fy = fr.top + fr.height / 2
+  function findNearest(from: DOMRect, dir: string, cards: HTMLElement[], exclude?: HTMLElement): HTMLElement | null {
+    const fx = from.left + from.width / 2
+    const fy = from.top + from.height / 2
     let best: HTMLElement | null = null
     let bestScore = Infinity
     for (const c of cards) {
-      if (c === focusedCard)
+      if (c === exclude)
         continue
       const r = c.getBoundingClientRect()
       const dx = r.left + r.width / 2 - fx
@@ -185,6 +215,29 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
         best = c
       }
     }
+    return best
+  }
+
+  function moveFocus(dir: 'up' | 'down' | 'left' | 'right', repeat: boolean) {
+    const cards = getCards()
+    if (!cards.length)
+      return
+    if (!focusedCard || !focusedCard.isConnected || !cards.includes(focusedCard)) {
+      // On video pages, entering element mode starts from the player's rect so
+      // e.g. Down lands on whatever is right below the player.
+      if (isVideoPage()) {
+        const playerRect = document.querySelector('.bpx-player-container')?.getBoundingClientRect()
+        const next = playerRect ? findNearest(playerRect, dir, cards) : null
+        if (next) {
+          setFocus(next, { smooth: false })
+          return
+        }
+      }
+      setFocus(restoreLast(cards) ?? pickInitial(cards), { smooth: false })
+      return
+    }
+
+    const best = findNearest(focusedCard.getBoundingClientRect(), dir, cards, focusedCard)
     if (best) {
       setFocus(best, { smooth: !repeat })
       return
@@ -197,21 +250,36 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
   function openFocused() {
     if (!focusedCard)
       return
-    const link = getCardLink(focusedCard)
-    if (!link?.href)
+    // Non-card targets on video pages: inputs get real focus, the comments
+    // web component focuses its inner reply box, buttons get clicked.
+    if (focusedCard.matches('input, textarea, [contenteditable]')) {
+      focusedCard.focus()
       return
-    try {
-      sessionStorage.setItem(LAST_HREF_KEY, link.href)
     }
-    catch {}
-    if (settings.value.videoCardLinkOpenMode === 'drawer') {
-      // Drawer opens in-page and closes via Esc — keep that path.
-      link.click()
+    if (focusedCard.tagName === 'BILI-COMMENTS') {
+      const reply = focusedCard.shadowRoot
+        ?.querySelector<HTMLElement>('[contenteditable="true"], textarea, .reply-box textarea, .reply-box')
+      if (reply)
+        reply.focus()
+      return
     }
-    else {
-      // Remote UX: always navigate in the current tab so Back can return.
-      window.location.href = link.href
+    const link = getCardLink(focusedCard)
+    if (link?.href) {
+      try {
+        sessionStorage.setItem(LAST_HREF_KEY, link.href)
+      }
+      catch {}
+      if (settings.value.videoCardLinkOpenMode === 'drawer') {
+        // Drawer opens in-page and closes via Esc — keep that path.
+        link.click()
+      }
+      else {
+        // Remote UX: always navigate in the current tab so Back can return.
+        window.location.href = link.href
+      }
+      return
     }
+    focusedCard.click()
   }
 
   function summonSearchBar() {
@@ -225,6 +293,13 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
       handlePageRefresh.value()
     else
       window.location.reload()
+  }
+
+  function focusPlayer() {
+    const player = document.querySelector<HTMLElement>('.bpx-player-container')
+      ?? document.querySelector<HTMLElement>('#bilibili-player')
+    player?.focus({ preventScroll: true })
+    player?.scrollIntoView({ block: 'nearest' })
   }
 
   // If an iframe drawer is open, click its close button. Returns whether a
@@ -295,11 +370,23 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
       return
     if (isInsideOverlay(e))
       return
-    if (isEditableTarget(e)) {
-      const el = e.composedPath?.()[0] as HTMLInputElement | undefined
+    const evtTarget = e.composedPath?.()[0] as HTMLInputElement | undefined
+    // The navSink holds focus during element nav on video pages — its events
+    // belong to the nav state machine, not the editable guard.
+    if (isEditableTarget(e) && evtTarget !== navSink) {
+      const el = evtTarget
       // Esc in an input just blurs it (a second Esc then goes back).
       if (e.key === 'Escape') {
         el?.blur()
+        return
+      }
+      // On video pages (e.g. the danmaku input), Back always returns focus to
+      // the player.
+      if (e.key === 'Backspace' && isVideoPage()) {
+        e.preventDefault()
+        e.stopPropagation()
+        el?.blur()
+        focusPlayer()
         return
       }
       // Back on an empty input behaves as navigate-back; with text, let it edit.
@@ -318,6 +405,12 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     const dir = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }[e.key] as 'up' | 'down' | 'left' | 'right' | undefined
 
     if (dir) {
+      // On video pages Left/Right belong to the player (seek) while nothing
+      // else is focused or the player itself holds the ring.
+      if (isVideoPage() && (dir === 'left' || dir === 'right')
+        && (!focusedCard || focusedCard.matches('.bpx-player-container'))) {
+        return
+      }
       if (!getCards().length)
         return // e.g. video page: leave arrows to the player (seek/volume)
       navActive = true
@@ -328,19 +421,39 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     }
 
     if (e.key === 'Enter') {
-      if (!navActive || !focusedCard)
+      if (navActive && focusedCard) {
+        e.preventDefault()
+        e.stopPropagation()
+        openFocused()
         return
-      e.preventDefault()
-      e.stopPropagation()
-      openFocused()
+      }
+      // Player mode: OK toggles play/pause.
+      if (isVideoPage()) {
+        e.preventDefault()
+        e.stopPropagation()
+        const video = document.querySelector('video')
+        if (video)
+          video.paused ? video.play() : video.pause()
+      }
       return
     }
 
     if (e.key === 'Backspace') {
       e.preventDefault()
       e.stopPropagation()
-      if (!closeDrawerIfOpen())
-        history.back()
+      if (closeDrawerIfOpen())
+        return
+      // On video pages Back returns focus to the player first; a second Back
+      // (player mode) navigates away. Ring-on-player counts as player mode.
+      if (isVideoPage() && (navActive || focusedCard)) {
+        if (focusedCard && !focusedCard.matches('.bpx-player-container')) {
+          navActive = false
+          setFocus(null)
+          focusPlayer()
+          return
+        }
+      }
+      history.back()
       return
     }
 
@@ -355,6 +468,8 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
       if (navActive) {
         navActive = false
         setFocus(null)
+        if (isVideoPage())
+          focusPlayer()
       }
       else {
         history.back()
