@@ -389,15 +389,14 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
         focusPlayer()
         return
       }
-      // Back on an empty input behaves as navigate-back; with text, let it edit.
+      // Back in an input only exits the control — blur it and send a synthetic
+      // Escape through so the component's own handler (e.g. the search bar's
+      // isFocus=false) closes its UI. It never navigates; the next Back does.
       if (e.key === 'Backspace') {
-        if (el && 'value' in el && el.value.trim() !== '')
-          return
         e.preventDefault()
         e.stopPropagation()
+        el?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         el?.blur()
-        if (!closeDrawerIfOpen())
-          history.back()
       }
       return
     }
