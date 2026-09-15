@@ -24,6 +24,12 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
   let focusedCard: HTMLElement | null = null
   let navActive = false
 
+  // On bilibili search-results pages the first Back "exits the search bar"
+  // (unfocuses the visible query input) instead of navigating — a second
+  // Back then goes back normally.
+  const isSearchResultsPage = /^search\./.test(location.hostname)
+  let searchPageExited = false
+
   // Bilibili's player binds arrow keys (seek/volume) on a window listener that
   // was registered before this content script, so we can't stopPropagation it.
   // But it ignores events targeted at form controls — so while element nav is
@@ -310,8 +316,16 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
       }
     }
     catch {}
-    if (!isHomePage())
+    if (!isHomePage()) {
       window.location.href = 'https://www.bilibili.com/'
+      return
+    }
+    // Back chain bottoms out on the first card.
+    const cards = getCards()
+    if (cards.length) {
+      navActive = true
+      setFocus(cards[0], { smooth: false })
+    }
   }
 
   function focusPlayer() {
@@ -414,6 +428,7 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
       if (e.key === 'Backspace') {
         e.preventDefault()
         e.stopPropagation()
+        searchPageExited = true
         el?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         el?.blur()
       }
@@ -461,6 +476,24 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
       e.stopPropagation()
       if (closeDrawerIfOpen())
         return
+      // The top-bar search box can keep shadow-DOM focus after landing on the
+      // results page — the first Back exits it instead of navigating.
+      const bewly = document.querySelector('#bewly')?.shadowRoot
+      const searchInput = bewly?.querySelector<HTMLElement>('.search-bar input')
+      if (searchInput && bewly?.activeElement === searchInput) {
+        searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        searchInput.blur()
+        return
+      }
+      // Search-results page: first Back exits the search bar (the stock
+      // bilibili input keeps showing the query), then Back navigates.
+      if (isSearchResultsPage && !searchPageExited) {
+        searchPageExited = true
+        const si = document.querySelector<HTMLElement>('.search-input-el')
+        si?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        si?.blur()
+        return
+      }
       // On video pages Back returns focus to the player first; a second Back
       // (player mode) navigates away. Ring-on-player counts as player mode.
       if (isVideoPage() && (navActive || focusedCard)) {
