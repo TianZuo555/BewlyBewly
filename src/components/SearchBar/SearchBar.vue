@@ -379,7 +379,7 @@ async function handleClearSearchHistory() {
 
   #search-history {
     @include search-content;
-    --uno: "bg-$bew-elevated";
+    --uno: "bg-$bew-elevated-solid";
 
     .history-list {
       --uno: "max-h-420px important-overflow-y-auto";
@@ -403,7 +403,7 @@ async function handleClearSearchHistory() {
 
   #search-suggestion {
     @include search-content;
-    --uno: "bg-$bew-elevated";
+    --uno: "bg-$bew-elevated-solid";
     --uno: "max-h-420px important-overflow-y-auto";
 
     .suggestion-item {
