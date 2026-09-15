@@ -177,3 +177,22 @@ img {
 .dark::view-transition-new(root) {
   z-index: 1;
 }
+
+// Remote navigation selection ring (useRemoteNav)
+// A fixed-position overlay drawn over the focused card — it sits above the
+// whole app so card internals can never clip or overpaint it.
+.remote-nav-focused {
+  transform: scale(1.04) translateZ(0) !important;
+  position: relative !important;
+  z-index: 5 !important;
+}
+.remote-nav-ring {
+  position: fixed !important;
+  border: 4px solid var(--bew-theme-color, #00a1d6) !important;
+  border-radius: calc(var(--bew-radius, 12px) + 6px) !important;
+  background: rgba(0, 161, 214, 0.1) !important;
+  box-shadow: 0 0 32px rgba(0, 161, 214, 0.45) !important;
+  pointer-events: none !important;
+  z-index: 2147483000 !important;
+  box-sizing: border-box !important;
+}

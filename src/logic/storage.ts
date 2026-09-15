@@ -23,6 +23,8 @@ export interface Settings {
 
   enableVideoPreview: boolean
 
+  enableRemoteNavigation: boolean
+
   // Link Opening Behavior
   videoCardLinkOpenMode: 'drawer' | 'newTab' | 'currentTab'
   topBarLinkOpenMode: 'currentTab' | 'currentTabIfNotHomepage' | 'newTab'
@@ -127,10 +129,10 @@ export const originalSettings: Settings = {
   disableShadow: false,
 
   // Link Opening Behavior
-  videoCardLinkOpenMode: 'newTab',
-  topBarLinkOpenMode: 'currentTabIfNotHomepage',
-  searchBarLinkOpenMode: 'currentTabIfNotHomepage',
-  closeDrawerWithoutPressingEscAgain: false,
+  videoCardLinkOpenMode: 'currentTab',
+  topBarLinkOpenMode: 'currentTab',
+  searchBarLinkOpenMode: 'currentTab',
+  closeDrawerWithoutPressingEscAgain: true,
 
   blockAds: false,
   blockTopSearchPageAds: false,
@@ -138,6 +140,8 @@ export const originalSettings: Settings = {
   enableVideoPreview: true,
   enableVideoCtrlBarOnVideoCard: false,
   hoverVideoCardDelayed: false,
+
+  enableRemoteNavigation: true,
 
   // Desktop & Dock
   useOldTopBar: false,

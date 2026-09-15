@@ -104,6 +104,8 @@ settings:
   enable_grid_layout_switcher: 啓用版面格線佈局切換器
   enable_horizontal_scrolling: 啓用橫向捲動
   enable_horizontal_scrolling_desc: 啓用後，滑鼠捲動時將直接捲動橫向捲軸列表。
+  enable_remote_navigation: 遙控器導航
+  enable_remote_navigation_desc: 用方向鍵在影片卡片間移動，Enter 打開，Backspace 返回，Esc 退出。適用於映射為鍵盤按鍵的電視遙控器。
 
   select_language: 介面語言
   select_language_opt:
