@@ -100,8 +100,8 @@ watch(() => settings.value.language, (newValue) => {
         <Radio v-model="settings.enableHorizontalScrolling" />
       </SettingsItem>
 
-      <SettingsItem :title="$t('settings.enable_remote_navigation')" :desc="$t('settings.enable_remote_navigation_desc')">
-        <Radio v-model="settings.enableRemoteNavigation" />
+      <SettingsItem :title="$t('settings.enable_remote_tv')" :desc="$t('settings.enable_remote_tv_desc')">
+        <Radio v-model="settings.enableRemoteTv" />
       </SettingsItem>
     </SettingsItemGroup>
 

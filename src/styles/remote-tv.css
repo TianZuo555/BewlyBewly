@@ -1,0 +1,22 @@
+/* Remote TV selection ring (useRemoteTv).
+   A fixed-position overlay drawn over the focused card — it sits above the
+   whole app so card internals can never clip or overpaint it.
+   The accent color comes from --remote-tv-accent, set per site adapter. */
+.remote-tv-focused {
+  transform: scale(1.04) translateZ(0) !important;
+  position: relative !important;
+  z-index: 5 !important;
+}
+
+.remote-tv-ring {
+  position: fixed !important;
+  border: 2px solid var(--remote-tv-accent, #00a1d6) !important;
+  border-radius: calc(var(--bew-radius, 12px) + 4px) !important;
+  background: rgba(0, 161, 214, 0.08) !important;
+  background: color-mix(in srgb, var(--remote-tv-accent, #00a1d6) 8%, transparent) !important;
+  box-shadow: 0 0 18px rgba(0, 161, 214, 0.35) !important;
+  box-shadow: 0 0 18px color-mix(in srgb, var(--remote-tv-accent, #00a1d6) 35%, transparent) !important;
+  pointer-events: none !important;
+  z-index: 2147483000 !important;
+  box-sizing: border-box !important;
+}

@@ -104,8 +104,8 @@ settings:
   enable_grid_layout_switcher: 启用页面网格布局切换器
   enable_horizontal_scrolling: 启用横向滚动
   enable_horizontal_scrolling_desc: 启用后，鼠标滚动时将直接滚动横向滚动列表。
-  enable_remote_navigation: 遥控器导航
-  enable_remote_navigation_desc: 用方向键在视频卡片间移动，回车打开，退格返回，Esc 退出。适用于映射为键盘按键的电视遥控器。
+  enable_remote_tv: Remote TV
+  enable_remote_tv_desc: 在 Bilibili、YouTube 和 YouTube Music 上用遥控器导航：方向键在卡片间移动，回车打开，退格返回，Esc 退出。适用于映射为键盘按键的电视遥控器。
 
   select_language: 界面语言
   select_language_opt:

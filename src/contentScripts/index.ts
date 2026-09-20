@@ -3,7 +3,9 @@ import 'uno.css'
 
 import { createApp } from 'vue'
 
+import { getRemoteTvSite } from '~/composables/remoteTvSites'
 import { useDark } from '~/composables/useDark'
+import { initRemoteTvStandalone } from '~/composables/useRemoteTv'
 import { BEWLY_MOUNTED } from '~/constants/globalEvents'
 import { settings } from '~/logic'
 import { setupApp } from '~/logic/common-setup'
@@ -116,55 +118,63 @@ export function isSupportedIframePages(): boolean {
 }
 
 let beforeLoadedStyleEl: HTMLStyleElement | undefined
+let removeOriginalTopBar: HTMLStyleElement | undefined
 
-if (isSupportedPages() || isSupportedIframePages()) {
-  if (settings.value.adaptToOtherPageStyles)
-    useDark()
+function bootstrapBilibili() {
+  if (isSupportedPages() || isSupportedIframePages()) {
+    if (settings.value.adaptToOtherPageStyles)
+      useDark()
 
-  if (settings.value.adaptToOtherPageStyles) {
-    document.documentElement.classList.add('bewly-design')
+    if (settings.value.adaptToOtherPageStyles) {
+      document.documentElement.classList.add('bewly-design')
 
-    // Remove the Bilibili Evolved's dark mode style
-    runWhenIdle(async () => {
-      const darkModeStyle = document.head.querySelector('#dark-mode')
-      if (darkModeStyle)
-        document.head.removeChild(darkModeStyle)
-    })
+      // Remove the Bilibili Evolved's dark mode style
+      runWhenIdle(async () => {
+        const darkModeStyle = document.head.querySelector('#dark-mode')
+        if (darkModeStyle)
+          document.head.removeChild(darkModeStyle)
+      })
+    }
+
+    else {
+      document.documentElement.classList.remove('bewly-design')
+    }
   }
 
-  else {
-    document.documentElement.classList.remove('bewly-design')
+  if (settings.value.adaptToOtherPageStyles && isHomePage()) {
+    beforeLoadedStyleEl = injectCSS(`
+      html.bewly-design {
+        background-color: var(--bew-bg);
+        transition: background-color 0.2s ease-in;
+      }
+
+      body {
+        display: none;
+      }
+    `)
+
+    // Add opacity transition effect for page loaded
+    injectCSS(`
+      body {
+        transition: opacity 0.5s;
+      }
+    `)
   }
+
+  window.addEventListener(BEWLY_MOUNTED, () => {
+    if (beforeLoadedStyleEl)
+      document.documentElement.removeChild(beforeLoadedStyleEl)
+  })
+
+  // Set the original Bilibili top bar to `display: none` to prevent it from showing before the load
+  // see: https://github.com/BewlyBewly/BewlyBewly/issues/967
+  removeOriginalTopBar = injectCSS(`.bili-header, #biliMainHeader { visibility: hidden !important; }`)
+
+  if (document.readyState !== 'loading')
+    onDOMLoaded()
+  else
+    document.addEventListener('DOMContentLoaded', () => onDOMLoaded())
 }
-
-if (settings.value.adaptToOtherPageStyles && isHomePage()) {
-  beforeLoadedStyleEl = injectCSS(`
-    html.bewly-design {
-      background-color: var(--bew-bg);
-      transition: background-color 0.2s ease-in;
-    }
-
-    body {
-      display: none;
-    }
-  `)
-
-  // Add opacity transition effect for page loaded
-  injectCSS(`
-    body {
-      transition: opacity 0.5s;
-    }
-  `)
-}
-
-window.addEventListener(BEWLY_MOUNTED, () => {
-  if (beforeLoadedStyleEl)
-    document.documentElement.removeChild(beforeLoadedStyleEl)
-})
-
-// Set the original Bilibili top bar to `display: none` to prevent it from showing before the load
-// see: https://github.com/BewlyBewly/BewlyBewly/issues/967
-const removeOriginalTopBar = injectCSS(`.bili-header, #biliMainHeader { visibility: hidden !important; }`)
 
 async function onDOMLoaded() {
   let originalTopBar: HTMLElement | null = null
@@ -211,11 +221,6 @@ async function onDOMLoaded() {
   if (removeOriginalTopBar)
     document.documentElement.removeChild(removeOriginalTopBar)
 }
-
-if (document.readyState !== 'loading')
-  onDOMLoaded()
-else
-  document.addEventListener('DOMContentLoaded', () => onDOMLoaded())
 
 function injectAppWhenIdle() {
   return new Promise<void>((resolve) => {
@@ -291,6 +296,15 @@ function injectApp() {
   setupApp(app)
   app.mount(root)
 }
+
+const remoteTvSite = getRemoteTvSite()
+
+// YouTube / YouTube Music run Remote TV standalone — the Bewly UI is
+// Bilibili-only, so the whole app bootstrap is skipped there.
+if (remoteTvSite && remoteTvSite.name !== 'bilibili')
+  initRemoteTvStandalone()
+else
+  bootstrapBilibili()
 
 // 實際使用實在太卡，註釋了先
 // function startShadowDOMStyleInjection() {

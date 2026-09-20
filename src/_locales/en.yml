@@ -106,8 +106,8 @@ settings:
   enable_grid_layout_switcher: Enable grid layout switcher
   enable_horizontal_scrolling: Enable horizontal scrolling
   enable_horizontal_scrolling_desc: After enabling, mouse scrolling will directly scroll the horizontal scroll list.
-  enable_remote_navigation: Remote-control navigation
-  enable_remote_navigation_desc: Use arrow keys to move between video cards, Enter to open, Backspace to go back, Esc to exit. Designed for TV remotes mapped to keyboard keys.
+  enable_remote_tv: Remote TV
+  enable_remote_tv_desc: Remote-control navigation on Bilibili, YouTube and YouTube Music — arrow keys move between items, Enter opens, Backspace goes back, Esc exits. Designed for TV remotes mapped to keyboard keys.
 
   select_language: Language
   select_language_opt:

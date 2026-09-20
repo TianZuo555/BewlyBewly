@@ -4,7 +4,7 @@ import type { Ref } from 'vue'
 
 import type { BewlyAppProvider } from '~/composables/useAppProvider'
 import { useDark } from '~/composables/useDark'
-import { useRemoteNav } from '~/composables/useRemoteNav'
+import { useRemoteTv } from '~/composables/useRemoteTv'
 import { BEWLY_MOUNTED, DRAWER_VIDEO_ENTER_PAGE_FULL, DRAWER_VIDEO_EXIT_PAGE_FULL, IFRAME_PAGE_SWITCH_BEWLY, IFRAME_PAGE_SWITCH_BILI, OVERLAY_SCROLL_BAR_SCROLL } from '~/constants/globalEvents'
 import { AppPage } from '~/enums/appEnums'
 import { settings } from '~/logic'
@@ -155,8 +155,8 @@ watch([() => showTopBar.value, () => activatedPage.value], () => {
 // Setup necessary settings watchers
 setupNecessarySettingsWatchers()
 
-// Arrow-key spatial navigation for remote controls (D-pad / OK / Back / Menu)
-useRemoteNav(handlePageRefresh)
+// Remote TV: arrow-key spatial navigation for remote controls (D-pad / OK / Back / Menu)
+useRemoteTv(handlePageRefresh)
 
 onMounted(() => {
   window.dispatchEvent(new CustomEvent(BEWLY_MOUNTED))

@@ -23,7 +23,7 @@ export interface Settings {
 
   enableVideoPreview: boolean
 
-  enableRemoteNavigation: boolean
+  enableRemoteTv: boolean
 
   // Link Opening Behavior
   videoCardLinkOpenMode: 'drawer' | 'newTab' | 'currentTab'
@@ -141,7 +141,7 @@ export const originalSettings: Settings = {
   enableVideoCtrlBarOnVideoCard: false,
   hoverVideoCardDelayed: false,
 
-  enableRemoteNavigation: true,
+  enableRemoteTv: true,
 
   // Desktop & Dock
   useOldTopBar: false,

@@ -87,6 +87,16 @@ export async function getManifest() {
         // @ts-expect-error
         world: 'MAIN',
       },
+      {
+        // Remote TV standalone on YouTube / YouTube Music — no Bewly UI or
+        // styles are injected there, only the navigation script.
+        matches: [
+          '*://www.youtube.com/*',
+          '*://music.youtube.com/*',
+        ],
+        js: ['./dist/contentScripts/index.global.js'],
+        run_at: 'document_start',
+      },
     ],
     web_accessible_resources: [
       {

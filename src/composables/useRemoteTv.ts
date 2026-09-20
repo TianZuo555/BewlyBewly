@@ -1,40 +1,43 @@
 import { useEventListener } from '@vueuse/core'
 import type { Ref } from 'vue'
 
+import { getRemoteTvSite } from '~/composables/remoteTvSites'
 import { settings } from '~/logic'
-import { isHomePage } from '~/utils/main'
+import REMOTE_TV_CSS from '~/styles/remote-tv.css?raw'
+import { injectCSS } from '~/utils/main'
 
 /**
- * Spatial (arrow-key) navigation for remote controls.
+ * Remote TV — spatial (arrow-key) navigation for remote controls.
  *
  * Designed for remotes mapped to keyboard keys (e.g. Xiaomi remote via a
  * macOS button-mapping app): D-pad emits ArrowUp/Down/Left/Right, OK emits
  * Enter, Back emits Backspace, Menu emits ContextMenu, Power emits Escape.
  *
- * Menu button: single click focuses the top-bar search input, double click
+ * Menu button: single click focuses the search input, double click
  * refreshes the page feed.
  *
- * Works on `.video-card` inside the #bewly shadow root and falls back to
- * `.bili-video-card` on stock Bilibili pages.
+ * Site-specifics (card selectors, player, search box, Back pre-steps) live
+ * in the per-site adapter — see remoteTvSites.ts. On Bilibili it runs inside
+ * the Bewly app (App.vue); on YouTube / YouTube Music it's installed
+ * standalone via initRemoteTvStandalone() with no Bewly UI.
  */
-export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) {
-  const FOCUS_CLASS = 'remote-nav-focused'
-  const LAST_HREF_KEY = 'remoteNav:lastHref'
+export function useRemoteTv(handlePageRefresh?: Ref<(() => void) | undefined>) {
+  const resolvedSite = getRemoteTvSite()
+  if (!resolvedSite)
+    return
+  const site = resolvedSite
+
+  const FOCUS_CLASS = 'remote-tv-focused'
+  const LAST_HREF_KEY = 'remoteTv:lastHref'
 
   let focusedCard: HTMLElement | null = null
   let navActive = false
 
-  // On bilibili search-results pages the first Back "exits the search bar"
-  // (unfocuses the visible query input) instead of navigating — a second
-  // Back then goes back normally.
-  const isSearchResultsPage = /^search\./.test(location.hostname)
-  let searchPageExited = false
-
-  // Bilibili's player binds arrow keys (seek/volume) on a window listener that
-  // was registered before this content script, so we can't stopPropagation it.
-  // But it ignores events targeted at form controls — so while element nav is
-  // active on a video page, this invisible readonly input holds real DOM focus
-  // and swallows the player's key handling.
+  // Players bind arrow keys (seek/volume) on window/document listeners that
+  // were registered before this content script, so we can't stopPropagation
+  // them. But they ignore events targeted at form controls — so while element
+  // nav is active in player mode, this invisible readonly input holds real
+  // DOM focus and swallows the player's key handling.
   let navSink: HTMLInputElement | null = null
 
   function ensureNavSink(): HTMLInputElement {
@@ -47,9 +50,9 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     return navSink
   }
 
-  // The selection ring is a fixed-position overlay appended to the shadow
-  // root — card-internal ::after approaches get clipped/overpainted by the
-  // card's own stacking contexts, so this is the reliable way.
+  // The selection ring is a fixed-position overlay — card-internal ::after
+  // approaches get clipped/overpainted by the card's own stacking contexts,
+  // so this is the reliable way.
   let ringEl: HTMLElement | null = null
   let ringRaf = 0
 
@@ -72,9 +75,9 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
   function showRing() {
     if (!ringEl) {
       ringEl = document.createElement('div')
-      ringEl.className = 'remote-nav-ring'
-      const host = document.querySelector('#bewly')?.shadowRoot ?? document.body
-      host.appendChild(ringEl)
+      ringEl.className = 'remote-tv-ring'
+      ringEl.style.setProperty('--remote-tv-accent', site.accent)
+      ;(site.ringHost?.() ?? document.body).appendChild(ringEl)
     }
     if (!ringRaf)
       ringRaf = requestAnimationFrame(syncRing)
@@ -89,40 +92,11 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     navSink?.blur()
   }
 
-  function isVideoPage(): boolean {
-    return !!document.querySelector('.bpx-player-container')
-  }
-
-  // Extra focusable targets on video pages, in addition to the rec cards.
-  // The player itself is included so Up can move focus back onto it.
-  const VIDEO_PAGE_TARGETS = [
-    '.bpx-player-container',
-    '.bpx-player-dm-input',
-    '.bpx-player-dm-btn-send',
-    '.toolbar-left-item-wrap',
-    '.up-info-container',
-    'bili-comments',
-  ]
-
   function getCards(): HTMLElement[] {
-    const cards: HTMLElement[] = []
-    const bewly = document.querySelector('#bewly')
-    if (bewly?.shadowRoot)
-      cards.push(...Array.from(bewly.shadowRoot.querySelectorAll<HTMLElement>('.video-card')))
-    cards.push(...Array.from(document.querySelectorAll<HTMLElement>('.bili-video-card, .video-page-card-small')))
-    if (isVideoPage()) {
-      for (const sel of VIDEO_PAGE_TARGETS)
-        cards.push(...Array.from(document.querySelectorAll<HTMLElement>(sel)))
-    }
-    return cards.filter((el) => {
+    return site.getCards().filter((el) => {
       const r = el.getBoundingClientRect()
       return r.width > 0 && r.height > 0
     })
-  }
-
-  function getCardLink(card: HTMLElement): HTMLAnchorElement | null {
-    return card.querySelector<HTMLAnchorElement>('a[href*="/video/"], a[href*="/bangumi/"], a[href*="/live/"]')
-      ?? card.querySelector<HTMLAnchorElement>('a[href]')
   }
 
   function isEditableTarget(e: KeyboardEvent): boolean {
@@ -133,8 +107,7 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el as HTMLElement).isContentEditable
   }
 
-  // BewlyBewly dialogs (e.g. the dislike dialog) use arrow keys themselves,
-  // don't steal keys while one is open.
+  // Dialogs use arrow keys themselves — don't steal keys while one is open.
   function isInsideOverlay(e: KeyboardEvent): boolean {
     return (e.composedPath?.() ?? []).some(
       n => n instanceof Element && (n.getAttribute('role') === 'dialog' || n.classList.contains('dialog')),
@@ -152,7 +125,7 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     card.classList.add(FOCUS_CLASS)
     card.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: smooth ? 'smooth' : 'auto' })
     showRing()
-    if (isVideoPage())
+    if (site.isWatchPage())
       ensureNavSink().focus({ preventScroll: true })
   }
 
@@ -177,7 +150,7 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
       if (!href)
         return null
       sessionStorage.removeItem(LAST_HREF_KEY)
-      return cards.find(c => getCardLink(c)?.href === href) ?? null
+      return cards.find(c => site.getCardLink(c)?.href === href) ?? null
     }
     catch {
       return null
@@ -230,10 +203,10 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     if (!cards.length)
       return
     if (!focusedCard || !focusedCard.isConnected || !cards.includes(focusedCard)) {
-      // On video pages, entering element mode starts from the player's rect so
+      // In player mode, entering element nav starts from the player's rect so
       // e.g. Down lands on whatever is right below the player.
-      if (isVideoPage()) {
-        const playerRect = document.querySelector('.bpx-player-container')?.getBoundingClientRect()
+      if (site.isWatchPage() && site.playerSelector) {
+        const playerRect = document.querySelector(site.playerSelector)?.getBoundingClientRect()
         const next = playerRect ? findNearest(playerRect, dir, cards) : null
         if (next) {
           setFocus(next, { smooth: false })
@@ -257,42 +230,31 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
   function openFocused() {
     if (!focusedCard)
       return
-    // Non-card targets on video pages: inputs get real focus, the comments
-    // web component focuses its inner reply box, buttons get clicked.
+    // Non-card targets: inputs get real focus, site-specific activate handles
+    // the rest (e.g. bilibili comments focusing their reply box).
     if (focusedCard.matches('input, textarea, [contenteditable]')) {
       focusedCard.focus()
       return
     }
-    if (focusedCard.tagName === 'BILI-COMMENTS') {
-      const reply = focusedCard.shadowRoot
-        ?.querySelector<HTMLElement>('[contenteditable="true"], textarea, .reply-box textarea, .reply-box')
-      if (reply)
-        reply.focus()
+    if (site.activate?.(focusedCard))
       return
-    }
-    const link = getCardLink(focusedCard)
+    const link = site.getCardLink(focusedCard)
     if (link?.href) {
       try {
         sessionStorage.setItem(LAST_HREF_KEY, link.href)
       }
       catch {}
-      if (settings.value.videoCardLinkOpenMode === 'drawer') {
-        // Drawer opens in-page and closes via Esc — keep that path.
-        link.click()
-      }
-      else {
-        // Remote UX: always navigate in the current tab so Back can return.
+      if (site.openLink)
+        site.openLink(link)
+      else
         window.location.href = link.href
-      }
       return
     }
     focusedCard.click()
   }
 
   function summonSearchBar() {
-    const input = document.querySelector('#bewly')?.shadowRoot
-      ?.querySelector<HTMLInputElement>('.search-bar input')
-    input?.focus()
+    site.searchInput?.()?.focus()
   }
 
   function refreshPage() {
@@ -302,22 +264,22 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
       window.location.reload()
   }
 
-  // Remote Back must never leave bilibili — when the history stack has no
-  // bilibili entry left, bottom out at the homepage instead.
+  // Remote Back must never leave the site — when the history stack has no
+  // same-site entry left, bottom out at the site's homepage instead.
   function navBack() {
     try {
       const nav = (window as any).navigation
       const entries = nav?.entries?.() as { url: string }[] | undefined
       const idx = nav?.currentEntry?.index ?? -1
       const prevUrl = idx > 0 ? entries?.[idx - 1]?.url : null
-      if (prevUrl && /(?:^|\.)bilibili\.com$/i.test(new URL(prevUrl).hostname)) {
+      if (prevUrl && site.hostPattern.test(new URL(prevUrl).hostname)) {
         history.back()
         return
       }
     }
     catch {}
-    if (!isHomePage()) {
-      window.location.href = 'https://www.bilibili.com/'
+    if (!site.isHomePage()) {
+      window.location.href = site.homeUrl
       return
     }
     // Back chain bottoms out on the first card.
@@ -329,28 +291,13 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
   }
 
   function focusPlayer() {
-    const player = document.querySelector<HTMLElement>('.bpx-player-container')
-      ?? document.querySelector<HTMLElement>('#bilibili-player')
+    const player = site.playerSelector ? document.querySelector<HTMLElement>(site.playerSelector) : null
     player?.focus({ preventScroll: true })
     player?.scrollIntoView({ block: 'nearest' })
   }
 
-  // If an iframe drawer is open, click its close button. Returns whether a
-  // drawer was open (so callers can skip history.back()).
-  function closeDrawerIfOpen(): boolean {
-    const sr = document.querySelector('#bewly')?.shadowRoot
-    if (!sr)
-      return false
-    const iframe = sr.querySelector('iframe')
-    if (!iframe || iframe.getBoundingClientRect().height < window.innerHeight * 0.5)
-      return false
-    const btn = Array.from(sr.querySelectorAll<HTMLElement>('[class*="close-line"]'))
-      .map(i => i.closest('button'))
-      .find(b => b && b.getBoundingClientRect().width > 0)
-    if (!btn)
-      return false
-    btn.click()
-    return true
+  function isRingOnPlayer(): boolean {
+    return !!site.playerSelector && !!focusedCard && focusedCard.matches(site.playerSelector)
   }
 
   // Menu button (ContextMenu key):
@@ -403,12 +350,12 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
   }, { capture: true })
 
   useEventListener(window, 'keydown', (e: KeyboardEvent) => {
-    if (!settings.value.enableRemoteNavigation)
+    if (!settings.value.enableRemoteTv)
       return
     if (isInsideOverlay(e))
       return
     const evtTarget = e.composedPath?.()[0] as HTMLInputElement | undefined
-    // The navSink holds focus during element nav on video pages — its events
+    // The navSink holds focus during element nav in player mode — its events
     // belong to the nav state machine, not the editable guard.
     if (isEditableTarget(e) && evtTarget !== navSink) {
       const el = evtTarget
@@ -417,9 +364,9 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
         el?.blur()
         return
       }
-      // On video pages (e.g. the danmaku input), Back always returns focus to
+      // In player mode (e.g. the danmaku input), Back always returns focus to
       // the player.
-      if (e.key === 'Backspace' && isVideoPage()) {
+      if (e.key === 'Backspace' && site.isWatchPage()) {
         e.preventDefault()
         e.stopPropagation()
         el?.blur()
@@ -432,9 +379,11 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
       if (e.key === 'Backspace') {
         e.preventDefault()
         e.stopPropagation()
-        searchPageExited = true
-        el?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-        el?.blur()
+        if (el && !site.onBackInEditable?.(el)) {
+          el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+          el.blur()
+        }
+        return
       }
       return
     }
@@ -442,14 +391,14 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     const dir = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }[e.key] as 'up' | 'down' | 'left' | 'right' | undefined
 
     if (dir) {
-      // On video pages Left/Right belong to the player (seek) while nothing
+      // In player mode Left/Right belong to the player (seek) while nothing
       // else is focused or the player itself holds the ring.
-      if (isVideoPage() && (dir === 'left' || dir === 'right')
-        && (!focusedCard || focusedCard.matches('.bpx-player-container'))) {
+      if (site.isWatchPage() && (dir === 'left' || dir === 'right')
+        && (!focusedCard || isRingOnPlayer())) {
         return
       }
       if (!getCards().length)
-        return // e.g. video page: leave arrows to the player (seek/volume)
+        return // e.g. watch page: leave arrows to the player (seek/volume)
       navActive = true
       e.preventDefault()
       e.stopPropagation()
@@ -465,12 +414,11 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
         return
       }
       // Player mode: OK toggles play/pause.
-      if (isVideoPage()) {
+      const video = document.querySelector('video')
+      if (video && (site.isWatchPage() || site.mediaKeysWhenIdle)) {
         e.preventDefault()
         e.stopPropagation()
-        const video = document.querySelector('video')
-        if (video)
-          video.paused ? video.play() : video.pause()
+        video.paused ? video.play() : video.pause()
       }
       return
     }
@@ -478,30 +426,14 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
     if (e.key === 'Backspace') {
       e.preventDefault()
       e.stopPropagation()
-      if (closeDrawerIfOpen())
+      if (site.closeOverlay?.())
         return
-      // The top-bar search box can keep shadow-DOM focus after landing on the
-      // results page — the first Back exits it instead of navigating.
-      const bewly = document.querySelector('#bewly')?.shadowRoot
-      const searchInput = bewly?.querySelector<HTMLElement>('.search-bar input')
-      if (searchInput && bewly?.activeElement === searchInput) {
-        searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-        searchInput.blur()
+      if (site.onBack?.())
         return
-      }
-      // Search-results page: first Back exits the search bar (the stock
-      // bilibili input keeps showing the query), then Back navigates.
-      if (isSearchResultsPage && !searchPageExited) {
-        searchPageExited = true
-        const si = document.querySelector<HTMLElement>('.search-input-el')
-        si?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-        si?.blur()
-        return
-      }
-      // On video pages Back returns focus to the player first; a second Back
+      // In player mode Back returns focus to the player first; a second Back
       // (player mode) navigates away. Ring-on-player counts as player mode.
-      if (isVideoPage() && (navActive || focusedCard)) {
-        if (focusedCard && !focusedCard.matches('.bpx-player-container')) {
+      if (site.isWatchPage() && (navActive || focusedCard)) {
+        if (focusedCard && !isRingOnPlayer()) {
           navActive = false
           setFocus(null)
           focusPlayer()
@@ -518,12 +450,12 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
         return
       e.preventDefault()
       e.stopPropagation()
-      if (closeDrawerIfOpen())
+      if (site.closeOverlay?.())
         return
       if (navActive) {
         navActive = false
         setFocus(null)
-        if (isVideoPage())
+        if (site.isWatchPage())
           focusPlayer()
       }
       else {
@@ -538,9 +470,18 @@ export function useRemoteNav(handlePageRefresh?: Ref<(() => void) | undefined>) 
   }, { capture: true })
 
   useEventListener(window, 'keyup', (e: KeyboardEvent) => {
-    if (!settings.value.enableRemoteNavigation)
+    if (!settings.value.enableRemoteTv)
       return
     if (e.key === 'ContextMenu')
       onMenuKeyUp(e)
   }, { capture: true })
+}
+
+/**
+ * Standalone install for sites with no Bewly UI (YouTube, YouTube Music) —
+ * injects the ring styles and wires up the key handling.
+ */
+export function initRemoteTvStandalone() {
+  injectCSS(REMOTE_TV_CSS)
+  useRemoteTv()
 }
